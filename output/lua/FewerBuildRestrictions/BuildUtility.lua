@@ -16,10 +16,10 @@ local function CheckBuildTechAvailable(techId, teamNumber)
 end
 
 local function GetPathingRequirementsMet(position, extents)
-	return not Pathing.GetIsFlagSet(position, extents, Pathing.PolyFlag_NoBuild) and Pathing.GetIsFlagSet(position, extents, Pathing.PolyFlag_Walk);
+	return not Pathing.GetIsFlagSet(position, extents, Pathing.PolyFlag_NoBuild) and Pathing.GetIsFlagSet(position, extents, Pathing.PolyFlag_Walk)
 end
 
-local function GetBuildAttachRequirementsMet(techId, position, teamNumber, snapRadius)
+local function GetBuildAttachRequirementsMet(techId, position, teamNumber, snapRadius, normal)
 
 	local legalBuild = true
 	local attachEntity = nil
@@ -92,6 +92,7 @@ local function GetBuildAttachRequirementsMet(techId, position, teamNumber, snapR
 				legalBuild = true
 
 				VectorCopy(attachEntity:GetOrigin(), legalPosition)
+				normal = attachEntity:GetCoords().yAxis
 
 			end
 
@@ -99,7 +100,7 @@ local function GetBuildAttachRequirementsMet(techId, position, teamNumber, snapR
 
 	end
 
-	return legalBuild, legalPosition, attachEntity
+	return legalBuild, legalPosition, attachEntity, normal
 
 end
 
@@ -135,18 +136,18 @@ end
 local function GetGroundAtPointWithCapsule(position, extents, filter)
 	local physicsGroupMask = PhysicsMask.CommanderBuild
 	local kCapsuleSize = 0.1
-	
+
 	local topOffset = extents.y + kCapsuleSize
 	local startPosition = position + Vector(0, topOffset, 0)
 	local endPosition = position - Vector(0, 1000, 0)
-	
+
 	local trace
 	if filter == nil then
-		trace = Shared.TraceCapsule(startPosition, endPosition, kCapsuleSize, 0, CollisionRep.Move, physicsGroupMask)	 
+		trace = Shared.TraceCapsule(startPosition, endPosition, kCapsuleSize, 0, CollisionRep.Move, physicsGroupMask)
 	else
-		trace = Shared.TraceCapsule(startPosition, endPosition, kCapsuleSize, 0, CollisionRep.Move, physicsGroupMask, filter)	 
+		trace = Shared.TraceCapsule(startPosition, endPosition, kCapsuleSize, 0, CollisionRep.Move, physicsGroupMask, filter)
 	end
-	
+
    -- If we didn't hit anything, then use our existing position. This
    -- prevents objects from constantly moving downward if they get outside
    -- of the bounds of the map.
@@ -157,12 +158,41 @@ local function GetGroundAtPointWithCapsule(position, extents, filter)
 	end
 end
 
+local function GetIsStructureExitValid(origin, direction, range)
+
+    local capsuleRadius = 0.5
+    local capsuleHeight = 0.5
+
+    local groundOffset = Vector(0, 0.1 + capsuleHeight/2 + capsuleRadius, 0)
+    local startPoint = origin + groundOffset
+    local endPoint = startPoint + direction * range
+    local trace = Shared.TraceCapsule(startPoint, endPoint, capsuleRadius, capsuleHeight, CollisionRep.Move, PhysicsMask.AIMovement, nil)
+
+    return trace.fraction == 1
+
+end
+
+local function CheckValidExit(techId, position, angle)
+
+    local directionVec = GetNormalizedVector(Vector(math.sin(angle), 0, math.cos(angle)))
+
+    local validExit = true
+
+    local validExit = GetIsStructureExitValid(position, directionVec, 5)
+
+    return validExit, not validExit and "COMMANDERERROR_NO_EXIT" or nil
+
+end
+
+--gBuildRestrictions = true
+local last_check = -1000
+local prevValidOddPos = true
 --
 --Returns true or false if build attachments are fulfilled, as well as possible attach entity
 --to be hooked up to. If snap radius passed, then snap build origin to it when nearby. Otherwise
 --use only a small tolerance to see if entity is close enough to an attach class.
 --
-function GetIsBuildLegal(techId, position, angle, snapRadius, player, ignoreEntity, ignoreChecks)
+function GetIsBuildLegal(techId, position, angle, snapRadius, player, ignoreEntity, ignoreChecks, inabsolute)
 
 	local legalBuild = true
 	local extents = GetExtents(techId)
@@ -170,20 +200,14 @@ function GetIsBuildLegal(techId, position, angle, snapRadius, player, ignoreEnti
 	local attachEntity = nil
 	local errorString = nil
 
-	local requiresActivation = false;
-
 	local filter = CreateFilter(ignoreEntity)
 
-	if ignoreEntities then
-		filter = EntityFilterAll()
-	end
-
 	-- Snap to ground
-	local legalPosition, normal = GetGroundAtPointWithCapsule(position, extents, CreateFilter(ignoreEntity))
+	local legalPosition, normal = GetGroundAtPointWithCapsule(position, extents, filter)
 
 	-- Check attach points
 	local teamNumber = GetTeamNumber(player, ignoreEntity)
-	legalBuild, legalPosition, attachEntity = GetBuildAttachRequirementsMet(techId, legalPosition, teamNumber, snapRadius)
+	legalBuild, legalPosition, attachEntity, normal = GetBuildAttachRequirementsMet(techId, legalPosition, teamNumber, snapRadius, normal)
 
 	if not legalBuild then
 		errorString = "COMMANDERERROR_OUT_OF_RANGE"
@@ -207,23 +231,40 @@ function GetIsBuildLegal(techId, position, angle, snapRadius, player, ignoreEnti
 
 	if not attachEntity and legalBuild then
 
-		local isNotOddPos = GetPathingRequirementsMet(legalPosition, extents);
-		if	techId == kTechId.Cyst or
-			techId == kTechId.TeleportEgg or
-			techId == kTechId.DrifterEgg or
-			techId == kTechId.Egg or
-			techId == kTechId.GorgeEgg or
-			techId == kTechId.LerkEgg or
-			techId == kTechId.FadeEgg or
-			techId == kTechId.OnosEgg then -- Things that can construct must never be outside the map
-			if not isNotOddPos then
-				legalBuild = false;
-				errorString = "COMMANDERERROR_INVALID_PLACEMENT";
+		local isNotOddPos = GetPathingRequirementsMet(legalPosition, extents)
+		if not isNotOddPos then
+			if not inabsolute or Shared.GetTime() > last_check + 0.2 then
+				last_check = Shared.GetTime()
+				local ents = GetEntitiesWithinRange("Entity", legalPosition, 12)
+				local self_pos = LookupTechData(techId, kTechDataMaxExtents)
+				self_pos = legalPosition + (self_pos and self_pos.y / 2 or 0.5)
+				for i = 1, #ents do
+					local ent = ents[i]
+					if HasMixin(ent, "Construct") or ent:isa "Player" then
+						local ent_pos
+						if ent.GetEngagementPoint then
+							ent_pos = ent:GetEngagementPoint()
+						else
+							ent_pos = LookupTechData(ent:GetTechId(), kTechDataMaxExtents)
+							ent_pos = ent:GetOrigin() + (ent_pos and ent_pos.y / 2 or 0.5)
+						end
+						local trace = Shared.TraceRay(self_pos, ent_pos, CollisionRep.Move, PhysicsMask.AllButPCsAndRagdollsAndBabblers, filter)
+
+						if trace.entity == ent then
+							legalBuild = true
+							prevValidOddPos = true
+							goto next
+						end
+					end
+				end
+				legalBuild = false
+				prevValidOddPos = false
+			else
+				legalBuild = prevValidOddPos
 			end
-		else
-			requiresActivation = not isNotOddPos;
 		end
 
+		::next::
 	end
 
 	-- Check infestation requirements
@@ -274,6 +315,10 @@ function GetIsBuildLegal(techId, position, angle, snapRadius, player, ignoreEnti
 
 	end
 
+    if legalBuild and (not ignoreChecks or ignoreChecks["ValidExit"] ~= true) and techId == kTechId.RoboticsFactory then
+        legalBuild, errorString = CheckValidExit(techId, legalPosition, angle)
+    end
+
 	if legalBuild and techId == kTechId.InfantryPortal then
 
 		legalBuild = CheckValidIPPlacement(legalPosition, extents)
@@ -283,6 +328,6 @@ function GetIsBuildLegal(techId, position, angle, snapRadius, player, ignoreEnti
 
 	end
 
-	return legalBuild, legalPosition, attachEntity, errorString, requiresActivation, normal
+	return legalBuild, legalPosition, attachEntity, errorString, normal
 
 end

@@ -12,7 +12,6 @@ local ghostTechId = kTechId.None
 local ghostStructureEnabled = false
 local errorMessage = ""
 local ghostStructureValid = false
-local ghostStructureRequiresActivation = false;
 local ghostStructureCoords = Coords()
 local ghostStructureTargetId = Entity.invalidId
 local orientationAngle = 0
@@ -31,7 +30,7 @@ function GetCommanderErrorMessage()
 end
 
 function GetCommanderGhostStructureValid()
-    return ghostStructureValid, ghostStructureRequiresActivation
+    return ghostStructureValid
 end
 
 function GetCommanderGhostStructureSpecifyingOrientation()
@@ -77,7 +76,7 @@ function GetCommanderGhostStructureCoords()
 
             orientationAngle = GetSpecifiedOrientation(commander)
 
-            ghostStructureValid, position, attachEntity, errorMessage, ghostStructureRequiresActivation = GetIsBuildLegal(ghostTechId, ghostStructureCoords.origin, orientationAngle, kStructureSnapRadius, commander)
+            ghostStructureValid, position, attachEntity, errorMessage = GetIsBuildLegal(ghostTechId, ghostStructureCoords.origin, orientationAngle, kStructureSnapRadius, commander, nil, nil)
 
             -- Preserve position, but update angle from mouse.
             local angles = Angles(0, orientationAngle, 0)
@@ -95,7 +94,7 @@ function GetCommanderGhostStructureCoords()
                 -- We only want to do the "ValidExit" check after picking a location for a structure requiring a valid exit.
                 local ignoreChecks = LookupTechData(ghostTechId, kTechDataSpecifyOrientation, false) and kIgnoreValidExitCheck or nil
 
-                ghostStructureValid, position, attachEntity, errorMessage, ghostStructureRequiresActivation = GetIsBuildLegal(ghostTechId, trace.endPoint, 0, kStructureSnapRadius, commander, nil, ignoreChecks)
+                ghostStructureValid, position, attachEntity, errorMessage = GetIsBuildLegal(ghostTechId, trace.endPoint, 0, kStructureSnapRadius, commander, nil, ignoreChecks, true)
 
                 if trace.entity then
                     ghostStructureTargetId = trace.entity:GetId()

@@ -1,3 +1,0 @@
-shader = "cinematics/vfx_materials/placement_valid.surface_shader"
-tint = [0.2, 0, 0.1]
-normalMap = "%inherit"

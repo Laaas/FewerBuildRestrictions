@@ -6,6 +6,12 @@
 --
 -- ========= For more information, visit us at http://www.unknownworlds.com =====================
 
+BuildingMixin = { }
+BuildingMixin.type = "Building"
+
+function BuildingMixin:__initmixin()
+end
+
 local function EvalBuildIsLegal(self, techId, origin, angle, builderEntity, isCommanderPicked)
 
     PROFILE("EvalBuildIsLegal")
@@ -14,14 +20,14 @@ local function EvalBuildIsLegal(self, techId, origin, angle, builderEntity, isCo
     local position = nil
     local attachEntity = nil
     local errorString = nil
-	local requiresActivation
+	local normal = nil
 
     if not isCommanderPicked then
 
         -- When Drifters and MACs build, or untargeted build/buy actions, trace from order point down to see
         -- if they're trying to build on top of anything and if that's OK.
         local trace = Shared.TraceRay(Vector(origin.x, origin.y + .1, origin.z), Vector(origin.x, origin.y - .2, origin.z), CollisionRep.Select, PhysicsMask.CommanderBuild, EntityFilterOne(builderEntity))
-        legalBuildPosition, position, attachEntity, errorString, requiresActivation = GetIsBuildLegal(techId, trace.endPoint, angle, kStructureSnapRadius, self:GetOwner(), builderEntity)
+        legalBuildPosition, position, attachEntity, errorString, normal = GetIsBuildLegal(techId, trace.endPoint, angle, kStructureSnapRadius, self:GetOwner(), builderEntity)
 
     else
 
@@ -29,11 +35,11 @@ local function EvalBuildIsLegal(self, techId, origin, angle, builderEntity, isCo
         if commander == nil then
             commander = self
         end
-        legalBuildPosition, position, attachEntity, errorString, requiresActivation = GetIsBuildLegal(techId, origin, angle, kStructureSnapRadius, commander, builderEntity)
+        legalBuildPosition, position, attachEntity, errorString, normal = GetIsBuildLegal(techId, origin, angle, kStructureSnapRadius, commander, builderEntity)
 
     end
 
-    return legalBuildPosition, position, attachEntity, errorString, requiresActivation
+    return legalBuildPosition, position, attachEntity, errorString, normal
 
 end
 
@@ -41,11 +47,13 @@ end
 -- If not isCommanderPicked, builderEntity will be the entity doing the building.
 function BuildingMixin:AttemptToBuild(techId, origin, normal, orientation, isCommanderPicked, buildTech, builderEntity, trace, owner)
 
+    local legalBuildPosition = false
+    local position = nil
+    local attachEntity = nil
+	local normal
     local coordsMethod = LookupTechData(techId, kTechDataOverrideCoordsMethod, nil)
 
-    local legalBuildPosition, position, attachEntity, errorString, requiresActivation = EvalBuildIsLegal(self, techId, origin, orientation, builderEntity, isCommanderPicked)
-
---Log("%s, %s, %s, %s, %s", legalBuildPosition, position, attachEntity, errorString, requiresActivation);
+    legalBuildPosition, position, attachEntity, errorString = EvalBuildIsLegal(self, techId, origin, orientation, builderEntity, isCommanderPicked)
 
     if legalBuildPosition then
 
@@ -97,10 +105,6 @@ function BuildingMixin:AttemptToBuild(techId, origin, normal, orientation, isCom
                 newEnt:SetCoords(coords)
 
             end
-
-			if HasMixin(newEnt, "Construct") and requiresActivation then
-				newEnt:SetRequiresActivation();
-			end
 
             self:TriggerEffects("commander_create_local", { ismarine = GetIsMarineUnit(newEnt), isalien = GetIsAlienUnit(newEnt) })
 
