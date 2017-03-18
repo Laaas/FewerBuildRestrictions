@@ -6,6 +6,27 @@
 --
 -- ========= For more information, visit us at http://www.unknownworlds.com =====================
 
+local buildRestrictions = true
+
+Shared.RegisterNetworkMessage("BuildRestrictions", {
+	state = "boolean"
+})
+
+if Client then
+	Client.HookNetworkMessage("BuildRestrictions", function(msg)
+		buildRestrictions = msg.state
+	end)
+elseif Server then
+	function SetBuildRestrictions(state)
+		buildRestrictions = state
+		Server.SendNetworkMessage("BuildRestrictions", {state = state}, true)
+	end
+
+	function GetBuildRestrictions()
+		return buildRestrictions
+	end
+end
+
 local function CheckBuildTechAvailable(techId, teamNumber)
 
 	local techTree = GetTechTree(teamNumber)
@@ -184,7 +205,6 @@ local function CheckValidExit(techId, position, angle)
 
 end
 
---gBuildRestrictions = true
 local last_check = -1000
 local prevValidOddPos = true
 --
@@ -207,16 +227,20 @@ function GetIsBuildLegal(techId, position, angle, snapRadius, player, ignoreEnti
 
 	-- Check attach points
 	local teamNumber = GetTeamNumber(player, ignoreEntity)
-	legalBuild, legalPosition, attachEntity, normal = GetBuildAttachRequirementsMet(techId, legalPosition, teamNumber, snapRadius, normal)
+	if buildRestrictions then
+		legalBuild, legalPosition, attachEntity, normal = GetBuildAttachRequirementsMet(techId, legalPosition, teamNumber, snapRadius, normal)
+	end
 
 	if not legalBuild then
 		errorString = "COMMANDERERROR_OUT_OF_RANGE"
 	end
 
-	local spawnBlock = LookupTechData(techId, kTechDataSpawnBlock, false)
-	if spawnBlock and legalBuild then
-		legalBuild = #GetEntitiesForTeamWithinRange("SpawnBlocker", player:GetTeamNumber(), position, kSpawnBlockRange) == 0
-		errorString = (not legalBuild) and "COMMANDERERROR_MUST_WAIT" or nil
+	if buildRestrictions then
+		local spawnBlock = LookupTechData(techId, kTechDataSpawnBlock, false)
+		if spawnBlock and legalBuild then
+			legalBuild = #GetEntitiesForTeamWithinRange("SpawnBlocker", player:GetTeamNumber(), position, kSpawnBlockRange) == 0
+			errorString = (not legalBuild) and "COMMANDERERROR_MUST_WAIT" or nil
+		end
 	end
 
 	if legalBuild then
@@ -229,7 +253,7 @@ function GetIsBuildLegal(techId, position, angle, snapRadius, player, ignoreEnti
 
 	end
 
-	if not attachEntity and legalBuild then
+	if not attachEntity and legalBuild and buildRestrictions then
 
 		local isNotOddPos = GetPathingRequirementsMet(legalPosition, extents)
 		if not isNotOddPos then
@@ -291,7 +315,7 @@ function GetIsBuildLegal(techId, position, angle, snapRadius, player, ignoreEnti
 	end
 
 	-- Check special build requirements. We do it here because we have the trace from the building available to find out the normal
-	if legalBuild then
+	if legalBuild and buildRestrictions then
 
 		local method = LookupTechData(techId, kTechDataBuildRequiresMethod, nil)
 		if method then
@@ -319,7 +343,7 @@ function GetIsBuildLegal(techId, position, angle, snapRadius, player, ignoreEnti
         legalBuild, errorString = CheckValidExit(techId, legalPosition, angle)
     end
 
-	if legalBuild and techId == kTechId.InfantryPortal then
+	if legalBuild and techId == kTechId.InfantryPortal and buildRestrictions then
 
 		legalBuild = CheckValidIPPlacement(legalPosition, extents)
 		if not legalBuild then
