@@ -1,12 +1,27 @@
--- ======= Copyright (c) 2003-2012, Unknown Worlds Entertainment, Inc. All rights reserved. =====
---
--- lua\BuildUtility.lua
---
---	  Created by:	Brian Cronin (brianc@unknownworlds.com)
---
--- ========= For more information, visit us at http://www.unknownworlds.com =====================
+Script.Load "lua/TechTreeConstants.lua"
 
 local buildRestrictions = true
+local RestrictedBuilds = table.array(#kTechId)
+for _, v in ipairs {
+	"PhaseGate",
+	"Veil",
+	"Spur",
+	"Shell",
+	"ArmsLab",
+	"RoboticsFactory",
+	"InfantryPortal",
+	"Observatory",
+	"Cyst",
+	"Egg",
+	"TeleportTunnel",
+	"Hive",
+} do
+	RestrictedBuilds[kTechId[v]] = true
+
+	if rawget(kTechId, "Teleport" .. v) then
+		RestrictedBuilds[kTechId["Teleport" .. v]] = true
+	end
+end
 
 Shared.RegisterNetworkMessage("BuildRestrictions", {
 	state = "boolean"
@@ -205,8 +220,6 @@ local function CheckValidExit(techId, position, angle)
 
 end
 
-local last_check = -1000
-local prevValidOddPos = true
 --
 --Returns true or false if build attachments are fulfilled, as well as possible attach entity
 --to be hooked up to. If snap radius passed, then snap build origin to it when nearby. Otherwise
@@ -253,42 +266,8 @@ function GetIsBuildLegal(techId, position, angle, snapRadius, player, ignoreEnti
 
 	end
 
-	if not attachEntity and legalBuild and buildRestrictions then
-
-		local isNotOddPos = GetPathingRequirementsMet(legalPosition, extents)
-		if not isNotOddPos then
-			if not inabsolute or Shared.GetTime() > last_check + 0.2 then
-				last_check = Shared.GetTime()
-				local ents = GetEntitiesWithinRange("Entity", legalPosition, 12)
-				local self_pos = LookupTechData(techId, kTechDataMaxExtents)
-				self_pos = legalPosition + (self_pos and self_pos.y / 2 or 0.5)
-				for i = 1, #ents do
-					local ent = ents[i]
-					if HasMixin(ent, "Construct") or ent:isa "Player" then
-						local ent_pos
-						if ent.GetEngagementPoint then
-							ent_pos = ent:GetEngagementPoint()
-						else
-							ent_pos = LookupTechData(ent:GetTechId(), kTechDataMaxExtents)
-							ent_pos = ent:GetOrigin() + (ent_pos and ent_pos.y / 2 or 0.5)
-						end
-						local trace = Shared.TraceRay(self_pos, ent_pos, CollisionRep.Move, PhysicsMask.AllButPCsAndRagdollsAndBabblers, filter)
-
-						if trace.entity == ent then
-							legalBuild = true
-							prevValidOddPos = true
-							goto next
-						end
-					end
-				end
-				legalBuild = false
-				prevValidOddPos = false
-			else
-				legalBuild = prevValidOddPos
-			end
-		end
-
-		::next::
+	if legalBuild and buildRestrictions and not attachEntity and RestrictedBuilds[techId] then
+		legalBuild = GetPathingRequirementsMet(legalPosition, extents)
 	end
 
 	-- Check infestation requirements

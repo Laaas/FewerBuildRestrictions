@@ -1,3 +1,3 @@
 function PlayingTeam:GetSupplyUsed()
-    return self.supplyUsed;
+    return self.supplyUsed
 end
