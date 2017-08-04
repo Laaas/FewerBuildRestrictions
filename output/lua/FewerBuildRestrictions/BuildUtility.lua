@@ -40,6 +40,10 @@ elseif Server then
 	function GetBuildRestrictions()
 		return buildRestrictions
 	end
+
+	Event.Hook("ClientConnect", function(client)
+		Server.SendNetworkMessage(client, "BuildRestrictions", {state = buildRestrictions}, true)
+	end)
 end
 
 local function CheckBuildTechAvailable(techId, teamNumber)
