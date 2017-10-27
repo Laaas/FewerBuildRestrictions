@@ -304,7 +304,7 @@ function GetIsBuildLegal(techId, position, angle, snapRadius, player, ignoreEnti
 		errorString = "COMMANDERERROR_TECH_NOT_AVAILABLE"
 	end
 
-	if legalBuild and buildRestrictions and not attachEntity and RestrictedBuilds[techId] then
+	if legalBuild and buildRestrictions and not attachEntity and (RestrictedBuilds == true or RestrictedBuilds[techId]) then
 		legalBuild  = GetPathingRequirementsMet(legalPosition, extents)
 		errorString = "COMMANDERERROR_INVALID_PLACEMENT"
 	end
