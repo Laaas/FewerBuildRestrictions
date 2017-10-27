@@ -200,28 +200,59 @@ end
 
 local function GetIsStructureExitValid(origin, direction, range)
 
-    local capsuleRadius = 0.5
-    local capsuleHeight = 0.5
+	local capsuleRadius = 0.5
+	local capsuleHeight = 0.5
 
-    local groundOffset = Vector(0, 0.1 + capsuleHeight/2 + capsuleRadius, 0)
-    local startPoint = origin + groundOffset
-    local endPoint = startPoint + direction * range
-    local trace = Shared.TraceCapsule(startPoint, endPoint, capsuleRadius, capsuleHeight, CollisionRep.Move, PhysicsMask.AIMovement, nil)
+	local groundOffset = Vector(0, 0.1 + capsuleHeight/2 + capsuleRadius, 0)
+	local startPoint = origin + groundOffset
+	local endPoint = startPoint + direction * range
+	local trace = Shared.TraceCapsule(startPoint, endPoint, capsuleRadius, capsuleHeight, CollisionRep.Move, PhysicsMask.AIMovement, nil)
 
-    return trace.fraction == 1
+	return trace.fraction == 1
 
 end
 
 local function CheckValidExit(techId, position, angle)
+end
 
-    local directionVec = GetNormalizedVector(Vector(math.sin(angle), 0, math.cos(angle)))
+local function CheckBuildEntityRequirements(techId, position, player, ignoreEntity)
+	local techTree
+	if Client then
+		techTree = GetTechTree()
+	else
+		techTree = player:GetTechTree()
+	end
 
-    local validExit = true
+	local techNode = techTree:GetTechNode(techId)
+	local attachClass = LookupTechData(techId, kStructureAttachClass)
 
-    local validExit = GetIsStructureExitValid(position, directionVec, 5)
+	-- Build tech can't be built on top of non-attachment entities.
+	if techNode and techNode:GetIsBuild() then
 
-    return validExit, not validExit and "COMMANDERERROR_NO_EXIT" or nil
+		local trace = Shared.TraceBox(GetExtents(techId), position + Vector(0, 1, 0), position - Vector(0, 3, 0), CollisionRep.Default, PhysicsMask.AllButPCs, EntityFilterOne(ignoreEntity))
 
+		-- Now make sure we're not building on top of something that is used for another purpose (ie, armory blocking use of tech point)
+		if trace.entity then
+
+			local hitClassName = trace.entity:GetClassName()
+			if GetIsAttachment(hitClassName) and (hitClassName ~= attachClass) then
+				return false, "COMMANDERERROR_CANT_BUILD_ON_TOP"
+			end
+
+		end
+
+		if not legalBuild then
+		end
+
+	end
+
+	return true, ""
+end
+
+local function CheckClearForStacking(position, extents, attachEntity, ignoreEntity)
+	local filter = CreateFilter(ignoreEntity, attachEntity)
+	local trace = Shared.TraceBox(extents, position + Vector(0, 1.5, 0), position - Vector(0, 3, 0), CollisionRep.Default, PhysicsMask.CommanderStack, filter)
+	return trace.entity == nil
 end
 
 --
@@ -230,12 +261,12 @@ end
 --use only a small tolerance to see if entity is close enough to an attach class.
 --
 function GetIsBuildLegal(techId, position, angle, snapRadius, player, ignoreEntity, ignoreChecks, inabsolute)
-
-	local legalBuild = true
-	local extents = GetExtents(techId)
+	local legalBuild	 = true
+	local extents		 = GetExtents(techId)
+	local ignoreEntities = LookupTechData(techId, kTechDataCollideWithWorldOnly, false)
 
 	local attachEntity = nil
-	local errorString = nil
+	local errorString  = nil
 
 	local filter = CreateFilter(ignoreEntity)
 
@@ -248,93 +279,64 @@ function GetIsBuildLegal(techId, position, angle, snapRadius, player, ignoreEnti
 		legalBuild, legalPosition, attachEntity, normal = GetBuildAttachRequirementsMet(techId, legalPosition, teamNumber, snapRadius, normal)
 	end
 
-	if not legalBuild then
-		errorString = "COMMANDERERROR_OUT_OF_RANGE"
+	errorString = "COMMANDERERROR_OUT_OF_RANGE"
+
+	if legalBuild and buildRestrictions GetTechTree(teamNumber):GetTechNode(techId):GetIsBuild() then
+		local filter = ignoreEntities and EntityFilterAll() or CreateFilter(ignoreEntity, attachEntity)
+		legalBuild   = Shared.CollideBox(extents, legalPosition, CollisionRep.Default, PhysicsMask.CommanderStack, filter)
+		errorString  = "COMMANDERERROR_INVALID_PLACEMENTS"
 	end
 
-	if buildRestrictions then
+	if legalBuild and buildRestrictions then
 		local spawnBlock = LookupTechData(techId, kTechDataSpawnBlock, false)
-		if spawnBlock and legalBuild then
+		if spawnBlock then
 			legalBuild = #GetEntitiesForTeamWithinRange("SpawnBlocker", player:GetTeamNumber(), position, kSpawnBlockRange) == 0
-			errorString = (not legalBuild) and "COMMANDERERROR_MUST_WAIT" or nil
 		end
+		errorString = "COMMANDERERROR_MUST_WAIT"
 	end
 
 	if legalBuild then
-
-		legalBuild = legalBuild and CheckBuildTechAvailable(techId, teamNumber)
-
-		if not legalBuild then
-			errorString = "COMMANDERERROR_TECH_NOT_AVAILABLE"
-		end
-
+		legalBuild  = CheckBuildTechAvailable(techId, teamNumber)
+		errorString = "COMMANDERERROR_TECH_NOT_AVAILABLE"
 	end
 
 	if legalBuild and buildRestrictions and not attachEntity and RestrictedBuilds[techId] then
-		legalBuild = GetPathingRequirementsMet(legalPosition, extents)
-	end
-
-	-- Check infestation requirements
-	if legalBuild then
-
-		legalBuild = legalBuild and GetInfestationRequirementsMet(techId, legalPosition)
-		if not legalBuild then
-			errorString = "COMMANDERERROR_INFESTATION_REQUIRED"
-		end
-
+		legalBuild  = GetPathingRequirementsMet(legalPosition, extents)
+		errorString = "COMMANDERERROR_INVALID_PLACEMENT"
 	end
 
 	if legalBuild then
+		legalBuild  = GetInfestationRequirementsMet(techId, legalPosition)
+		errorString = "COMMANDERERROR_INFESTATION_REQUIRED"
+	end
 
-		-- dont allow dropping on infestation
-		if LookupTechData(techId, kTechDataNotOnInfestation, false) and GetIsPointOnInfestation(legalPosition) then
-			legalBuild = false
-		end
-
-		if not legalBuild then
-			errorString = "COMMANDERERROR_NOT_ALLOWED_ON_INFESTATION"
-		end
-
+	if legalBuild then
+		legalBuild  = not (LookupTechData(techId, kTechDataNotOnInfestation, false) and GetIsPointOnInfestation(legalPosition))
+		errorString = "COMMANDERERROR_NOT_ALLOWED_ON_INFESTATION"
 	end
 
 	-- Check special build requirements. We do it here because we have the trace from the building available to find out the normal
 	if legalBuild and buildRestrictions then
-
 		local method = LookupTechData(techId, kTechDataBuildRequiresMethod, nil)
 		if method then
-
-			-- DL: As the normal passed in here isn't used to orient the building - don't bother working it out exactly. Up should be good enough.
-			legalBuild = method(techId, legalPosition, normal, player)
-
-			if not legalBuild then
-
-				local customMessage = LookupTechData(techId, kTechDataBuildMethodFailedMessage, nil)
-
-				if customMessage then
-					errorString = customMessage
-				else
-					errorString = "COMMANDERERROR_BUILD_FAILED"
-				end
-
-			end
-
+			legalBuild  = method(techId, legalPosition, normal, player)
+			errorString = LookupTechData(techId, kTechDataBuildMethodFailedMessage, "COMMANDERERROR_BUILD_FAILED")
 		end
-
 	end
 
-    if legalBuild and (not ignoreChecks or ignoreChecks["ValidExit"] ~= true) and techId == kTechId.RoboticsFactory then
-        legalBuild, errorString = CheckValidExit(techId, legalPosition, angle)
-    end
+	if legalBuild and not (ignoreChecks and ignoreChecks.ValidExit) and techId == kTechId.RoboticsFactory then
+		local directionVec = GetNormalizedVector(Vector(math.sin(angle), 0, math.cos(angle)))
+
+		legalBuild  = GetIsStructureExitValid(position, directionVec, 5)
+		errorString = "COMMANDERERROR_NO_EXIT"
+	end
 
 	if legalBuild and techId == kTechId.InfantryPortal and buildRestrictions then
 
 		legalBuild = CheckValidIPPlacement(legalPosition, extents)
-		if not legalBuild then
-			errorString = "COMMANDERERROR_INVALID_PLACEMENTS"
-		end
+		errorString = "COMMANDERERROR_INVALID_PLACEMENTS"
 
 	end
 
-	return legalBuild, legalPosition, attachEntity, errorString, normal
-
+	return legalBuild, legalPosition, attachEntity, legalBuild and errorString or nil, normal
 end
