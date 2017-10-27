@@ -23,6 +23,8 @@ for _, v in ipairs {
 	end
 end
 
+RestrictedBuilds = true
+
 Shared.RegisterNetworkMessage("BuildRestrictions", {
 	state = "boolean"
 })
