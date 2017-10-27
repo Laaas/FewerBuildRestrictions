@@ -260,7 +260,7 @@ end
 --to be hooked up to. If snap radius passed, then snap build origin to it when nearby. Otherwise
 --use only a small tolerance to see if entity is close enough to an attach class.
 --
-function GetIsBuildLegal(techId, position, angle, snapRadius, player, ignoreEntity, ignoreChecks, inabsolute)
+function GetIsBuildLegal(techId, position, angle, snapRadius, player, ignoreEntity, ignoreChecks)
 	local legalBuild	 = true
 	local extents		 = GetExtents(techId)
 	local ignoreEntities = LookupTechData(techId, kTechDataCollideWithWorldOnly, false)
@@ -281,11 +281,15 @@ function GetIsBuildLegal(techId, position, angle, snapRadius, player, ignoreEnti
 
 	errorString = "COMMANDERERROR_OUT_OF_RANGE"
 
-	if legalBuild and buildRestrictions GetTechTree(teamNumber):GetTechNode(techId):GetIsBuild() then
-		local filter = ignoreEntities and EntityFilterAll() or CreateFilter(ignoreEntity, attachEntity)
-		legalBuild   = Shared.CollideBox(extents, legalPosition, CollisionRep.Default, PhysicsMask.CommanderStack, filter)
-		errorString  = "COMMANDERERROR_INVALID_PLACEMENTS"
-	end
+	-- Disabled since it does not work accurately, since extents are not good
+	--if legalBuild and buildRestrictions and not attachEntity and GetTechTree(teamNumber):GetTechNode(techId):GetIsBuild() then
+	--	local filter = ignoreEntities and EntityFilterAll() or EntityFilterOne(ignoreEntity)
+	--	--legalBuild   = not Shared.CollideBox(extents, legalPosition + Vector(0, extents.y + .05, 0), CollisionRep.LOS, PhysicsMask.CommanderStack, filter)
+	--	legalBuild   = not (
+	--		Shared.TraceRay(legalPosition, legalPosition + extents.y + extents.y, CollisionRep.Default, PhysicsMask.CommanderStack, filter).fraction ~= 1
+	--	)
+	--	errorString  = "COMMANDERERROR_INVALID_PLACEMENT"
+	--end
 
 	if legalBuild and buildRestrictions then
 		local spawnBlock = LookupTechData(techId, kTechDataSpawnBlock, false)
@@ -332,11 +336,9 @@ function GetIsBuildLegal(techId, position, angle, snapRadius, player, ignoreEnti
 	end
 
 	if legalBuild and techId == kTechId.InfantryPortal and buildRestrictions then
-
 		legalBuild = CheckValidIPPlacement(legalPosition, extents)
 		errorString = "COMMANDERERROR_INVALID_PLACEMENTS"
-
 	end
 
-	return legalBuild, legalPosition, attachEntity, legalBuild and errorString or nil, normal
+	return legalBuild, legalPosition, attachEntity, not legalBuild and errorString or nil, normal
 end
