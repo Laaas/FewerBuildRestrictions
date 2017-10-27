@@ -261,9 +261,10 @@ end
 --use only a small tolerance to see if entity is close enough to an attach class.
 --
 function GetIsBuildLegal(techId, position, angle, snapRadius, player, ignoreEntity, ignoreChecks)
-	local legalBuild	 = true
-	local extents		 = GetExtents(techId)
+	local legalBuild     = true
+	local extents        = GetExtents(techId)
 	local ignoreEntities = LookupTechData(techId, kTechDataCollideWithWorldOnly, false)
+	local ignorePathing  = LookupTechData(techId, kTechDataIgnorePathingMesh,    false)
 
 	local attachEntity = nil
 	local errorString  = nil
@@ -284,8 +285,8 @@ function GetIsBuildLegal(techId, position, angle, snapRadius, player, ignoreEnti
 	-- Disabled since it does not work accurately, since extents are not good
 	--if legalBuild and buildRestrictions and not attachEntity and GetTechTree(teamNumber):GetTechNode(techId):GetIsBuild() then
 	--	local filter = ignoreEntities and EntityFilterAll() or EntityFilterOne(ignoreEntity)
-	--	--legalBuild   = not Shared.CollideBox(extents, legalPosition + Vector(0, extents.y + .05, 0), CollisionRep.LOS, PhysicsMask.CommanderStack, filter)
-	--	legalBuild   = not (
+	--	--legalBuild = not Shared.CollideBox(extents, legalPosition + Vector(0, extents.y + .05, 0), CollisionRep.LOS, PhysicsMask.CommanderStack, filter)
+	--	legalBuild	 = not (
 	--		Shared.TraceRay(legalPosition, legalPosition + extents.y + extents.y, CollisionRep.Default, PhysicsMask.CommanderStack, filter).fraction ~= 1
 	--	)
 	--	errorString  = "COMMANDERERROR_INVALID_PLACEMENT"
@@ -304,7 +305,7 @@ function GetIsBuildLegal(techId, position, angle, snapRadius, player, ignoreEnti
 		errorString = "COMMANDERERROR_TECH_NOT_AVAILABLE"
 	end
 
-	if legalBuild and buildRestrictions and not attachEntity and (RestrictedBuilds == true or RestrictedBuilds[techId]) then
+	if legalBuild and buildRestrictions and not attachEntity and not ignorePathing and (RestrictedBuilds == true or RestrictedBuilds[techId]) then
 		legalBuild  = GetPathingRequirementsMet(legalPosition, extents)
 		errorString = "COMMANDERERROR_INVALID_PLACEMENT"
 	end
@@ -336,7 +337,7 @@ function GetIsBuildLegal(techId, position, angle, snapRadius, player, ignoreEnti
 	end
 
 	if legalBuild and techId == kTechId.InfantryPortal and buildRestrictions then
-		legalBuild = CheckValidIPPlacement(legalPosition, extents)
+		legalBuild  = CheckValidIPPlacement(legalPosition, extents)
 		errorString = "COMMANDERERROR_INVALID_PLACEMENTS"
 	end
 
