@@ -1,8 +1,9 @@
 local files = {
 	{"BuildUtility", "replace"},
-	{"GUIResourceDisplay", "replace"},
+	--{"GUIResourceDisplay", "replace"},
 	{"PlayingTeam", "post"},
-	{"Balance", "post"},
+	--{"Balance", "post"},
+	{"BalanceMisc", "post"},
 }
 
 for _, v in ipairs(files) do
