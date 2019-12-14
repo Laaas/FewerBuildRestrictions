@@ -173,6 +173,10 @@ local function CheckValidIPPlacement(position, extents)
 
 end
 
+local function GetIsTunnelTech(techId)
+    return techId >= kTechId.BuildTunnelEntryOne and techId <= kTechId.BuildTunnelExitFour or techId == kTechId.Tunnel or techId == kTechId.TunnelExit or techId == kTechId.TunnelRelocate
+end
+
 local function GetGroundAtPointWithCapsule(position, extents, filter)
 	local physicsGroupMask = PhysicsMask.CommanderBuild
 	local kCapsuleSize = 0.1
@@ -339,6 +343,36 @@ function GetIsBuildLegal(techId, position, angle, snapRadius, player, ignoreEnti
 	if legalBuild and techId == kTechId.InfantryPortal and buildRestrictions then
 		legalBuild  = CheckValidIPPlacement(legalPosition, extents)
 		errorString = "COMMANDERERROR_INVALID_PLACEMENTS"
+	end
+
+	if legalBuild and GetIsTunnelTech(techId) then
+		-- Sanity check to ensure user cannot click down several tunnels really fast -- between
+		-- tech tree updates...
+		if techId ~= kTechId.TunnelRelocate then
+		    local teamInfo = GetTeamInfoEntity(teamNumber)
+
+		    local hiveCount = teamInfo:GetNumCapturedTechPoints()
+		    local tunnelCount = Tunnel.GetLivingTunnelCount(teamNumber)
+		    if tunnelCount >= hiveCount then
+                legalBuild = false
+                errorString = "TUNNEL_LIMIT_ONE_PER_HIVE_CAPS"
+		    end
+		end
+
+		-- confirm that the entrance is not placed too close to an obstacle
+		if legalBuild then
+		    local capsuleRadius = math.max(extents.x, extents.z)
+		    local capsuleHeight = extents.y
+		    local groundOffset = 0.3
+		    local center = Vector(0, capsuleHeight * 0.5 + capsuleRadius + groundOffset, 0)
+		    local spawnPointCenter = position + center
+		    local notValid = Shared.CollideCapsule(spawnPointCenter, capsuleRadius, capsuleHeight, CollisionRep.Default, PhysicsMask.AllButPCs, nil)
+
+		    if notValid then
+                legalBuild = false
+                errorString = "COMMANDERERROR_INVALID_PLACEMENT"
+		    end
+		end
 	end
 
 	return legalBuild, legalPosition, attachEntity, not legalBuild and errorString or nil, normal
